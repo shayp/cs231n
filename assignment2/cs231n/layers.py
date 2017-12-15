@@ -83,7 +83,7 @@ def relu_backward(dout, cache):
     - dx: Gradient with respect to x
     """
     dx, x = None, cache
-    dx = x
+    dx = dout
     dx[x < 0] = 0
 
     return dx
