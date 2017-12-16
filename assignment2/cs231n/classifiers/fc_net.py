@@ -45,6 +45,7 @@ class TwoLayerNet(object):
         self.params['b2'] = np.zeros(num_classes)
 
 
+
     def loss(self, X, y=None):
         """
         Compute loss and gradient for a minibatch of data.
@@ -66,8 +67,10 @@ class TwoLayerNet(object):
         """
         W1, b1 = self.params['W1'], self.params['b1']
         W2, b2 = self.params['W2'], self.params['b2']
+
         hiddenLayer, cacheHiddenLayer = affine_relu_forward(X, W1, b1)
         scores, cacheScores = affine_forward(hiddenLayer, W2, b2)
+
 
         # If y is None then we are in test mode so just return scores
         if y is None:
@@ -78,6 +81,7 @@ class TwoLayerNet(object):
         loss += 0.5 * self.reg * (np.sum(W1 * W1) + np.sum(W2 * W2))
         dx1, grads['W2'], grads['b2'] = affine_backward(dscores, cacheScores)
         dx, grads['W1'], grads['b1'] = affine_relu_backward(dx1, cacheHiddenLayer)
+
         grads['W1'] += self.reg * W1
         grads['W2'] += self.reg * W2
 
