@@ -21,9 +21,11 @@ def affine_forward(x, w, b):
     - cache: (x, w, b)
     """
     N = x.shape[0]
+    M = w.shape[1]
     D = np.prod(x.shape[1:])
-    xShaped = x.reshape((N, D))
-    out = xShaped.dot(w) + b
+    xShaped = np.reshape(x, (N, D))
+    b = b.reshape(M,)
+    out = np.dot(xShaped, w) + b
     cache = (x, w, b)
     return out, cache
 
@@ -83,7 +85,8 @@ def relu_backward(dout, cache):
     - dx: Gradient with respect to x
     """
     dx, x = None, cache
-    dx = dout
+    dx = np.array(dout, copy=True)
+
     dx[x < 0] = 0
 
     return dx
