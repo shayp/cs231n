@@ -134,28 +134,20 @@ class FullyConnectedNet(object):
         self.dtype = dtype
         self.params = {}
 
-        ############################################################################
-        # TODO: Initialize the parameters of the network, storing all values in    #
-        # the self.params dictionary. Store weights and biases for the first layer #
-        # in W1 and b1; for the second layer use W2 and b2, etc. Weights should be #
-        # initialized from a normal distribution with standard deviation equal to  #
-        # weight_scale and biases should be initialized to zero.                   #
-        #                                                                          #
-        # When using batch normalization, store scale and shift parameters for the #
-        # first layer in gamma1 and beta1; for the second layer use gamma2 and     #
-        # beta2, etc. Scale parameters should be initialized to one and shift      #
-        # parameters should be initialized to zero.                                #
-        ############################################################################
         self.L = len(hidden_dims) + 1
         self.N = input_dim
         self.C = num_classes
         dims = [self.N] + hidden_dims + [self.C]
+        self.bn_params = {}
         for i in range(len(dims) - 1):
             self.params['W' + str(i + 1)] =  weight_scale * np.random.randn(dims[i], dims[i + 1])
             self.params['b' + str(i + 1)] =  np.zeros(dims[i + 1])
-        ############################################################################
-        #                             END OF YOUR CODE                             #
-        ############################################################################
+            
+            if (self.use_batchnorm and i < len(dims) - 2):
+                self.params['gamma' + str(i + 1)] = np.ones(dims[i + 1])
+                self.params['beta' + str(i + 1)] = np.zeros(dims[i + 1])
+                self.bn_params['bn_param' + str(i + 1)] = {'mode': 'train', 'running_mean': np.zeros(dims[i + 1]), 'running_var': np.zeros(dims[i + 1])}
+                
 
         # When using dropout we need to pass a dropout_param dictionary to each
         # dropout layer so that the layer knows the dropout probability and the mode
@@ -165,15 +157,6 @@ class FullyConnectedNet(object):
             self.dropout_param = {'mode': 'train', 'p': dropout}
             if seed is not None:
                 self.dropout_param['seed'] = seed
-
-        # With batch normalization we need to keep track of running means and
-        # variances, so we need to pass a special bn_param object to each batch
-        # normalization layer. You should pass self.bn_params[0] to the forward pass
-        # of the first batch normalization layer, self.bn_params[1] to the forward
-        # pass of the second batch normalization layer, etc.
-        self.bn_params = []
-        if self.use_batchnorm:
-            self.bn_params = [{'mode': 'train'} for i in range(self.num_layers - 1)]
 
         # Cast all parameters to the correct datatype
         for k, v in self.params.items():
@@ -194,8 +177,8 @@ class FullyConnectedNet(object):
         if self.use_dropout:
             self.dropout_param['mode'] = mode
         if self.use_batchnorm:
-            for bn_param in self.bn_params:
-                bn_param['mode'] = mode
+            for key, bn_param in self.bn_params.iteritems():
+                bn_param[mode] = mode
 
         scores = None
 
@@ -214,16 +197,22 @@ class FullyConnectedNet(object):
                 hidden['h' + str(idx)] = h
                 hidden['cache_h' + str(idx)] = cache_h
             else:
-                h, cache_h = affine_relu_forward(h, w, b)
-                hidden['h' + str(idx)] = h
-                hidden['cache_h' + str(idx)] = cache_h
+                if self.use_batchnorm:
+                    bn_param = self.bn_params['bn_param' + str(idx)]
+                    gamma = self.params['gamma' + str(idx)]
+                    beta = self.params['beta' + str(idx)]
+                    h, cache_h = affine_norm_relu_forward(h, w, b, gamma, beta, bn_param)
+                    hidden['h' + str(idx)] = h
+                    hidden['cache_h' + str(idx)] = cache_h
+                else:
+                    h, cache_h = affine_relu_forward(h, w, b)
+                    hidden['h' + str(idx)] = h
+                    hidden['cache_h' + str(idx)] = cache_h
 
         scores = hidden['h' + str(self.L)]
         # If test mode return early
         if mode == 'test':
             return scores
-
-        
         
         loss, grads = 0.0, {}
 
@@ -245,10 +234,18 @@ class FullyConnectedNet(object):
                 grads['W' + str(idx)] = dw
                 grads['b' + str(idx)] = db
             else:
-                dh, dw, db = affine_relu_backward(dh, h_cache)
-                hidden['dh' + str(idx - 1)] = dh
-                grads['W' + str(idx)] = dw
-                grads['b' + str(idx)] = db
+                if self.use_batchnorm:
+                    dh, dw, db, dgamma, dbeta = affine_norm_relu_backward(dh, h_cache)
+                    hidden['dh' + str(idx - 1)] = dh
+                    grads['W' + str(idx)] = dw
+                    grads['b' + str(idx)] = db
+                    grads['gamma' + str(idx)] = dgamma
+                    grads['beta' + str(idx)] = dbeta
+                else:
+                    dh, dw, db = affine_relu_backward(dh, h_cache)
+                    hidden['dh' + str(idx - 1)] = dh
+                    grads['W' + str(idx)] = dw
+                    grads['b' + str(idx)] = db
 
         for key in grads.keys():
             if key[0] == 'W':
