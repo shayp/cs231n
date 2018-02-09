@@ -56,9 +56,6 @@ class ThreeLayerConvNet(object):
         self.params['b2'] = np.zeros([hidden_dim])
         self.params['W3'] = np.random.normal(0, weight_scale, [hidden_dim, num_classes])
         self.params['b3'] = np.zeros([num_classes])
-        ############################################################################
-        #                             END OF YOUR CODE                             #
-        ############################################################################
 
         for k, v in self.params.items():
             self.params[k] = v.astype(dtype)
@@ -82,11 +79,6 @@ class ThreeLayerConvNet(object):
         pool_param = {'pool_height': 2, 'pool_width': 2, 'stride': 2}
 
         scores = None
-        ############################################################################
-        # TODO: Implement the forward pass for the three-layer convolutional net,  #
-        # computing the class scores for X and storing them in the scores          #
-        # variable.                                                                #
-        ############################################################################
 
         maxpool1_out, combined_cache = conv_relu_pool_forward(X, W1, b1,  conv_param, pool_param)
 
@@ -95,9 +87,7 @@ class ThreeLayerConvNet(object):
         affine2_out, affine2_cache = affine_forward(affinerelu1_out, W3, b3)
 
         scores = np.copy(affine2_out)
-        ############################################################################
-        #                             END OF YOUR CODE                             #
-        ############################################################################
+
 
         if y is None:
             return scores
@@ -120,8 +110,6 @@ class ThreeLayerConvNet(object):
         grads['W3'], grads['b3'] = dw3 + self.reg*W3, db3
         grads['W2'], grads['b2'] = dw2 + self.reg*W2, db2
         grads['W1'], grads['b1'] = dw1 + self.reg*W1, db1
-        ############################################################################
-        #                             END OF YOUR CODE                             #
-        ############################################################################
+
 
         return loss, grads
