@@ -366,14 +366,29 @@ def conv_forward_naive(x, w, b, conv_param):
     - cache: (x, w, b, conv_param)
     """
     out = None
-    ###########################################################################
-    # TODO: Implement the convolutional forward pass.                         #
-    # Hint: you can use the function np.pad for padding.                      #
-    ###########################################################################
-    pass
-    ###########################################################################
-    #                             END OF YOUR CODE                            #
-    ###########################################################################
+
+    stride = conv_param['stride']
+    pad = conv_param['pad']
+    
+    # pad the image with zeros as defined in the conv_param
+    paddedX = np.pad(x, ((0,), (0,), (pad,),(pad, )), 'constant')
+    N, C, H, W = x.shape
+    F, C, filterH, filterW = w.shape
+    
+    # calculate the output size of image after conv
+    hTag = int(1 + (H + 2 * pad - filterH) / stride)
+    wTag = int(1 + (W + 2 * pad - filterW) / stride)
+    out = np.zeros((N, F, hTag, wTag))
+    
+    # Run for each [image,filter, pixel hight, pixel width]
+    for n in range(N):
+        for f in range(F):
+            for i in range(hTag):
+                for j in range(wTag):
+                    # compute the activation of a given pixel in image n using filter f by dot product of the patch with the 
+                    # filter and add the bias term to the filter
+                    out[n, f, i, j] = np.sum(paddedX[n,:, i*stride:i*stride + filterH, j*stride:j*stride + filterW] * w[f,:]) + b[f]
+
     cache = (x, w, b, conv_param)
     return out, cache
 
@@ -391,11 +406,38 @@ def conv_backward_naive(dout, cache):
     - dw: Gradient with respect to w
     - db: Gradient with respect to b
     """
-    dx, dw, db = None, None, None
-    ###########################################################################
-    # TODO: Implement the convolutional backward pass.                        #
-    ###########################################################################
-    pass
+    x, w, b, conv_param = cache
+    F, C, hFilter, wFilter = w.shape
+    N, nChannels, hOut, wOut = dout.shape  
+    stride = conv_param['stride']
+    pad = conv_param['pad']
+    x_pad = np.pad(x, [(0, 0), (0, 0), (pad, pad), (pad, pad)],'constant')  
+    dw, db, dx = np.zeros_like(w), np.zeros_like(b), np.zeros_like(x_pad)   
+    
+    # Run for each image
+    for n in range(N):
+        #Get the padded input image that we passed throw this layer
+        image = x_pad[n, :, :, :]
+        
+        # Run for each channel we calculated, e.g filter
+        for channel in range(nChannels):
+            
+            # Scan the entire image
+            for i in range(hOut):
+                for j in range(wOut):
+                    
+                    # Get the current patch we want to use for caclulating the gradient
+                    image_patch = image[:, (i*stride):(i*stride + hFilter), (j*stride):(j*stride + wFilter)]
+                    
+                    # The gradient with respect to W(channel, i,j) is the sum of image patches(X) multypled with the upstream derevarive
+                    dw[channel, :, :, :] += image_patch * dout[n, channel, i, j]
+                    
+                    # The gradient with respect to b(channel) is the sum  upstream gradients of filter f
+                    db[channel] += dout[n, channel, i, j]
+                    # The gradient with respect to x is a multiplication of the f W filter with the upstram gradient of this channel
+                    dx[n, :, (i*stride):(i*stride + hFilter), (j*stride):(j*stride + wFilter)] += w[channel, :, :, :] * dout[n, channel, i,j]
+        
+    dx = dx[:, :, pad:-pad, pad:-pad] # delete padding  
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -417,14 +459,21 @@ def max_pool_forward_naive(x, pool_param):
     - out: Output data
     - cache: (x, pool_param)
     """
-    out = None
-    ###########################################################################
-    # TODO: Implement the max pooling forward pass                            #
-    ###########################################################################
-    pass
-    ###########################################################################
-    #                             END OF YOUR CODE                            #
-    ###########################################################################
+    N, C, H, W = x.shape
+    hPool = pool_param['pool_height']
+    wPool = pool_param['pool_width']
+    stridePool = pool_param['stride']
+    hTag = int(1 + (H - hPool) / stridePool)
+    wTag = int(1 + (W - wPool) / stridePool)
+    out = np.zeros((N, C, hTag, wTag))
+    
+    # Run for each [image,filter, pixel hight, pixel width]
+    for n in range(N):
+        for c in range(C):
+            for i in range(hTag):
+                for j in range(wTag):
+                    # Take the max value from this patch
+                    out[n, c, i, j] = np.max(x[n,c, i*stridePool:i*stridePool + hPool, j*stridePool:j*stridePool + wPool])
     cache = (x, pool_param)
     return out, cache
 
@@ -440,14 +489,26 @@ def max_pool_backward_naive(dout, cache):
     Returns:
     - dx: Gradient with respect to x
     """
-    dx = None
-    ###########################################################################
-    # TODO: Implement the max pooling backward pass                           #
-    ###########################################################################
-    pass
-    ###########################################################################
-    #                             END OF YOUR CODE                            #
-    ###########################################################################
+    x, pool_param = cache
+    N, C, H, W = x.shape
+    N, nChannels, hOut, wOut = dout.shape  
+    hPool = pool_param['pool_height']
+    wPool = pool_param['pool_width']
+    stridePool = pool_param['stride']
+    hTag = int(1 + (H - hPool) / stridePool)
+    wTag = int(1 + (W - wPool) / stridePool)
+    dx = np.zeros((N,C,H,W))
+
+    for n in range(N):
+        for c in range(C):
+            for i in range(hTag):
+                for j in range(wTag):
+                        # Find the index of the max value from the patch, and put stream the gradient of the max pooling 
+                        # through this index
+                    arrInd = np.argmax(x[n,c, i*stridePool:i*stridePool + hPool, j*stridePool:j*stridePool + wPool])
+                    cordInd = np.unravel_index(arrInd, (hPool, wPool))
+                    dx[n,c, i*stridePool + cordInd[0], j*stridePool + cordInd[1]] = dout[n, c, i, j]
+                    
     return dx
 
 
@@ -482,10 +543,10 @@ def spatial_batchnorm_forward(x, gamma, beta, bn_param):
     # version of batch normalization defined above. Your implementation should#
     # be very short; ours is less than five lines.                            #
     ###########################################################################
-    pass
-    ###########################################################################
-    #                             END OF YOUR CODE                            #
-    ###########################################################################
+    N, C, H, W = x.shape
+    x_reshaped = x.transpose(0,2,3,1).reshape(N*H*W, C)
+    out_tmp, cache = batchnorm_forward(x_reshaped, gamma, beta, bn_param)
+    out = out_tmp.reshape(N, H, W, C).transpose(0, 3, 1, 2)
 
     return out, cache
 
@@ -512,10 +573,10 @@ def spatial_batchnorm_backward(dout, cache):
     # version of batch normalization defined above. Your implementation should#
     # be very short; ours is less than five lines.                            #
     ###########################################################################
-    pass
-    ###########################################################################
-    #                             END OF YOUR CODE                            #
-    ###########################################################################
+    N, C, H, W = dout.shape
+    dout_reshaped = dout.transpose(0,2,3,1).reshape(N*H*W, C)
+    dx_tmp, dgamma, dbeta = batchnorm_backward(dout_reshaped, cache)
+    dx = dx_tmp.reshape(N, H, W, C).transpose(0, 3, 1, 2)
 
     return dx, dgamma, dbeta
 
