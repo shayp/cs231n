@@ -137,10 +137,34 @@ class CaptioningRNN(object):
         # defined above to store loss and gradients; grads[k] should give the      #
         # gradients for self.params[k].                                            #
         ############################################################################
-        pass
-        ############################################################################
-        #                             END OF YOUR CODE                             #
-        ############################################################################
+        # step 1
+        h0, cache_0 = affine_forward(features, W_proj, b_proj)
+        
+        # step 2
+        layer_1, cache_1 = word_embedding_forward(captions_in, W_embed)
+        
+        if self.cell_type == "rnn":
+            # step 3
+            layer_2, cache_2 = rnn_forward(layer_1, h0, Wx, Wh, b)
+            
+            # step 4
+            layer_3, cache_3 = temporal_affine_forward(layer_2, W_vocab, b_vocab)
+            
+            # step 5
+            loss, dsoft_loss = temporal_softmax_loss(layer_3, captions_out, mask)
+            
+            # step 4 backprop
+            dLayer_2, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dsoft_loss, cache_3)
+            
+            # step 3 backprop
+            dLayer_1, dLayer_0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dLayer_2, cache_2)
+            
+            # step 2 backprop
+            grads['W_embed'] = word_embedding_backward(dLayer_1, cache_1)
+            
+            # step 1 backprop
+            dLayer_0, grads['W_proj'], grads['b_proj'] = affine_backward(dLayer_0, cache_0)
+        
 
         return loss, grads
 
@@ -199,8 +223,49 @@ class CaptioningRNN(object):
         # functions; you'll need to call rnn_step_forward or lstm_step_forward in #
         # a loop.                                                                 #
         ###########################################################################
-        pass
-        ############################################################################
-        #                             END OF YOUR CODE                             #
-        ############################################################################
+        # get the images features as history input
+        h0, cache_0 = affine_forward(features, W_proj, b_proj)
+        
+        # start with <start> caption 
+        captions[:,0] = self._start
+
+        
+        captions_in = captions[:, :-1]
+        captions_out = captions[:, 1:]
+        
+        # Get the first word embeddings of <start>
+        x, cache_1 = word_embedding_forward(captions_in, W_embed)
+
+        idx = 0
+        # For rnn case
+        if self.cell_type == "rnn":
+            # Take the image features (h0) and the input word embeddings of start and get the first rnn step
+            next_h, cache_2 = rnn_step_forward(x[:,0,:], h0, Wx, Wh, b)
+            
+            # make affine transformation using the next_h from the prev step
+            y, cache_3 = affine_forward(next_h, W_vocab, b_vocab)
+            
+            # Get the first output caption by argmax and write it to the first slot in the out caption
+            captions_out[:,0]   = np.argmax(y,axis=1)
+
+            idx = 1
+            while idx < max_length - 1:
+                # update the next input word to be the previous output word
+                captions_in[:,idx] = captions_out[:,idx - 1]
+                
+                # embed the next input words
+                x, cache_1 = word_embedding_forward(captions_in[:,idx:], W_embed)
+                
+                # Take the previous history and the input word embeddings of idx and run rnn step
+                next_h, cache_2 = rnn_step_forward(x[:,0,:], next_h, Wx, Wh, b)
+                
+                # make affine transformation using the next_h from the prev step                
+                y, cache_3 = affine_forward(next_h, W_vocab, b_vocab)
+                
+                # Get the idx output caption by argmax and write it to the idx slot in the out caption
+                captions_out[:,idx] = np.argmax(y,axis=1)
+                if np.all(captions_out[:,idx] == 2):
+                    break
+                idx += 1
+
         return captions
