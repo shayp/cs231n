@@ -144,26 +144,31 @@ class CaptioningRNN(object):
         layer_1, cache_1 = word_embedding_forward(captions_in, W_embed)
         
         if self.cell_type == "rnn":
-            # step 3
+            # step 3 - rnn
             layer_2, cache_2 = rnn_forward(layer_1, h0, Wx, Wh, b)
+        else:
+            # step 3 - lstm
+            layer_2, cache_2 = lstm_forward(layer_1, h0, Wx, Wh, b) 
+        # step 4
+        layer_3, cache_3 = temporal_affine_forward(layer_2, W_vocab, b_vocab)
             
-            # step 4
-            layer_3, cache_3 = temporal_affine_forward(layer_2, W_vocab, b_vocab)
+        # step 5
+        loss, dsoft_loss = temporal_softmax_loss(layer_3, captions_out, mask)
             
-            # step 5
-            loss, dsoft_loss = temporal_softmax_loss(layer_3, captions_out, mask)
-            
-            # step 4 backprop
-            dLayer_2, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dsoft_loss, cache_3)
-            
-            # step 3 backprop
+        # step 4 backprop
+        dLayer_2, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dsoft_loss, cache_3)
+        
+        if self.cell_type == "rnn":
+            # step 3 backprop - rnn
             dLayer_1, dLayer_0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dLayer_2, cache_2)
+        else:
+            # step 3 backprop - lstm
+            dLayer_1, dLayer_0, grads['Wx'], grads['Wh'], grads['b'] = lstm_backward(dLayer_2, cache_2)  
+        # step 2 backprop
+        grads['W_embed'] = word_embedding_backward(dLayer_1, cache_1)
             
-            # step 2 backprop
-            grads['W_embed'] = word_embedding_backward(dLayer_1, cache_1)
-            
-            # step 1 backprop
-            dLayer_0, grads['W_proj'], grads['b_proj'] = affine_backward(dLayer_0, cache_0)
+        # step 1 backprop
+        dLayer_0, grads['W_proj'], grads['b_proj'] = affine_backward(dLayer_0, cache_0)
         
 
         return loss, grads
@@ -241,31 +246,36 @@ class CaptioningRNN(object):
         if self.cell_type == "rnn":
             # Take the image features (h0) and the input word embeddings of start and get the first rnn step
             next_h, cache_2 = rnn_step_forward(x[:,0,:], h0, Wx, Wh, b)
+        else:
+            # Take the image features (h0) and the input word embeddings of start and get the first rnn step
+            next_h,next_c, cache_2 = lstm_step_forward(x[:,0,:], h0,np.zeros_like(h0), Wx, Wh, b)
+        # make affine transformation using the next_h from the prev step
+        y, cache_3 = affine_forward(next_h, W_vocab, b_vocab)
             
-            # make affine transformation using the next_h from the prev step
-            y, cache_3 = affine_forward(next_h, W_vocab, b_vocab)
-            
-            # Get the first output caption by argmax and write it to the first slot in the out caption
-            captions_out[:,0]   = np.argmax(y,axis=1)
+        # Get the first output caption by argmax and write it to the first slot in the out caption
+        captions_out[:,0]   = np.argmax(y,axis=1)
 
-            idx = 1
-            while idx < max_length - 1:
-                # update the next input word to be the previous output word
-                captions_in[:,idx] = captions_out[:,idx - 1]
+        idx = 1
+        while idx < max_length - 1:
+            # update the next input word to be the previous output word
+            captions_in[:,idx] = captions_out[:,idx - 1]
                 
-                # embed the next input words
-                x, cache_1 = word_embedding_forward(captions_in[:,idx:], W_embed)
-                
+            # embed the next input words
+            x, cache_1 = word_embedding_forward(captions_in[:,idx:], W_embed)
+            
+            if self.cell_type == "rnn":   
                 # Take the previous history and the input word embeddings of idx and run rnn step
                 next_h, cache_2 = rnn_step_forward(x[:,0,:], next_h, Wx, Wh, b)
+            else:
+                next_h,next_c, cache_2 = lstm_step_forward(x[:,0,:], next_h,next_c, Wx, Wh, b)
+            
+            # make affine transformation using the next_h from the prev step                
+            y, cache_3 = affine_forward(next_h, W_vocab, b_vocab)
                 
-                # make affine transformation using the next_h from the prev step                
-                y, cache_3 = affine_forward(next_h, W_vocab, b_vocab)
-                
-                # Get the idx output caption by argmax and write it to the idx slot in the out caption
-                captions_out[:,idx] = np.argmax(y,axis=1)
-                if np.all(captions_out[:,idx] == 2):
-                    break
-                idx += 1
+            # Get the idx output caption by argmax and write it to the idx slot in the out caption
+            captions_out[:,idx] = np.argmax(y,axis=1)
+            if np.all(captions_out[:,idx] == 2):
+                break
+            idx += 1
 
         return captions
